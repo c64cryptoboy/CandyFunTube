@@ -1,5 +1,11 @@
 #include <Adafruit_NeoPixel.h>
 
+const uint16_t msFrameDuration = 10;
+const int addressesPerStrip = 100; // 3 LEDs per address
+const int numStrips = 2;
+const int pixelBufSize = numStrips * addressesPerStrip;
+const uint8_t rainbowWidth = 8;
+
 // https://github.com/adafruit/Adafruit_NeoPixel
 
 // Parameter 1 = number of pixels in strip
@@ -10,149 +16,128 @@
 //   NEO_KHZ400  400 KHz bitstream (e.g. FLORA pixels)
 //   NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip)
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(100, 3, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(addressesPerStrip, 3, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(addressesPerStrip, 4, NEO_GRB + NEO_KHZ800);
 
+uint32_t pixels[pixelBufSize];
+uint32_t frameNum;
+int16_t rainbowPos;
+uint8_t randWheelStart;
+bool candyMode = false;
+
+// setup runs after each powerup or reset of the Arduino board
 void setup() {
-  strip.begin();
-  strip.show(); // Initialize all pixels to 'off'
+  frameNum = 0;
+  rainbowPos = -rainbowWidth+1;
+  candyMode = false;
   randomSeed(analogRead(0));
+  Serial.begin(9600);
+  Serial.println("Initializing...");
+  
+  strip0.begin();
+  strip1.begin();
 }
 
+// infinite loop
 void loop() {
-  // rainbowCycle(1);
-  sparkleWhite(10);
-  //runner(40);
-  clearAll();
-}
+  frameNum++;
+  delay(msFrameDuration);
 
+  updateBackgroundLayer();
+  updateSparkles();  
 
-// Fill the dots one after the other with a color
-void colorWipe(uint32_t c, uint8_t wait) {
-  for(uint16_t i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, c);
-      strip.show();
-      delay(wait);
+  // if (!candyMode && !digitalRead(2)) {
+  if (!candyMode) {  // TODO: sensor not present yet
+     rainbowPos = -rainbowWidth+1;
+     candyMode = true;
+     randWheelStart = random(256);  
   }
-}
+  if (candyMode) {
+    updateCandyWavefront(rainbowPos, randWheelStart);
+    //debugPixels(); delay(1000);
 
-void rainbow(uint8_t wait) {
-  uint16_t i, j;
-
-  for(j=0; j<256; j++) {
-    for(i=0; i<strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel((i+j) & 255));
+    if (frameNum % 1 == 0) {
+      rainbowPos++;
+      if (rainbowPos == pixelBufSize) {
+        rainbowPos = -rainbowWidth+1;
+        candyMode = false;
+      }
     }
-    strip.show();
-    delay(wait);
   }
+
+  // obviously, this could be generalized for an array of strips:
+  for (int i=0*addressesPerStrip; i<1*addressesPerStrip; i++) {
+    strip0.setPixelColor(i, pixels[i]);
+  }
+  for (int i=1*addressesPerStrip; i<2*addressesPerStrip; i++) {
+    strip1.setPixelColor(i, pixels[i]);
+  }
+
+  strip0.show();
+  strip1.show();  
 }
 
-// Slightly different, this makes the rainbow equally distributed throughout
-void rainbowCycle(uint8_t wait) {
-  uint16_t i, j;
+static uint32_t color(uint8_t r, uint8_t g, uint8_t b) {
+  // for some reason, green and blue are exchanged:
+  // return ((uint32_t)r << 16) | ((uint32_t)g <<  8) | b;  
+  return ((uint32_t)r << 16) | ((uint32_t)b <<  8) | g;
+}
 
-  for(j=0; j<256*10; j++) { // 5 cycles of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) {
-      strip.setPixelColor(i, Wheel(((i * 256 / strip.numPixels()) + j) & 255));
+void debugPixels() {
+  for (uint16_t i=0; i<numStrips; i++) {
+    Serial.println();
+    for (uint16_t j=0; j<addressesPerStrip; j++) {
+      Serial.print(pixels[i * addressesPerStrip + j]);
+      Serial.print(" ");
     }
-    strip.show();
-    delay(wait);
+  }
+  Serial.println();
+}
+
+void updateBackgroundLayer() {
+  uint8_t r, g, b;
+  uint32_t c;
+
+  // for now, this is a fixed blue background
+  r = g = 0;
+  b = 16;
+  c = color(r, g, b);
+
+  for (uint16_t i=0; i<pixelBufSize; i++) {
+    pixels[i] = c;
   }
 }
 
-// Input a value 0 to 255 to get a color value.
-// The colours are a transition r - g - b - back to r.
-uint32_t Wheel(byte WheelPos) {
+void updateSparkles() {
+  uint16_t odds;
+
+  odds = random(100);
+  if (odds < 10) {
+     pixels[random(pixelBufSize)] = color(255, 255, 255);
+  }
+}
+
+void updateCandyWavefront(int16_t rainbowPos, uint8_t randWheelStart) {
+  for (int i = max(0, rainbowPos); i <= min(pixelBufSize, rainbowPos+rainbowWidth); i++) {
+    pixels[i] = wheel((2 * i + randWheelStart) % 256);
+  }
+}
+
+uint32_t wheel(byte WheelPos) {
   if(WheelPos < 85) {
-   return strip.Color(255 - WheelPos * 3, WheelPos * 3, 0);
+   return color(255 - WheelPos * 3, WheelPos * 3, 0);
   } else if(WheelPos < 170) {
    WheelPos -= 85;
-   return strip.Color(0, 255 - WheelPos * 3, WheelPos * 3);
+   return color(0, 255 - WheelPos * 3, WheelPos * 3);
   } else {
    WheelPos -= 170;
-   return strip.Color(WheelPos * 3, 0, 255 - WheelPos * 3);
+   return color(WheelPos * 3, 0, 255 - WheelPos * 3);
   }
 }
 
-void runner(uint8_t wait)
-{
-  uint16_t np = strip.numPixels();
-  uint32_t color;
-  for (uint16_t j=0; j<4; j++) {
-    color = Wheel((j * 16) % 256);
-    for (uint16_t i=0; i < np; i++) {
-      clearAll();
-      strip.setPixelColor(i, color);
-      strip.show();
-      delay(wait);
-    }
-  }
+/*
+void testStuff(Adafruit_NeoPixel *aStrip) {
+  Serial.println("newtest");
+  Serial.println((*aStrip).numPixels());
 }
-    
-void fromCenter(uint8_t wait) 
-{
-  uint16_t np = strip.numPixels()/2;
-  uint32_t color;
-  for (uint16_t j=0; j<16; j++) {
-    clearAll();
-    color = Wheel((j * 16) % 256);
-    for (uint16_t i=0; i < np; i++) {
-      strip.setPixelColor(np + i, color);
-      strip.setPixelColor(np - i, color);
-      strip.show();
-      delay(wait);
-    }
-  }
-}
-
-void sparkle(uint8_t wait) 
-{
-  uint32_t color;
-  uint16_t pos;
-  uint16_t nOn = strip.numPixels() / 3;
-  for (uint16_t j=0; j<256; j++) {
-    clearAll();
-    for (uint16_t k=0; k<nOn; k++) {
-      pos = random(strip.numPixels());
-      color = Wheel(random(256));
-      strip.setPixelColor(pos, color);
-    }
-    strip.show();
-    delay(wait);
-  }
-}
-
-void sparkleWhite(uint8_t wait) 
-{
-  uint32_t color;
-  uint16_t pos, odds;
-  uint16_t nOn = 1; //strip.numPixels() / 50;
-  for (uint16_t j=0; j<256; j++) {
-    odds = random(100);
-    setAll(strip.Color(0, 16, 0));
-    if (odds < 20) {
-    for (uint16_t k=0; k<nOn; k++) {
-      pos = random(strip.numPixels());
-      color = strip.Color(255, 255, 255);
-      strip.setPixelColor(pos, color);
-    }
-    }
-    strip.show();
-    delay(wait);
-  }
-}       
-
-void setAll(uint32_t c)
-{
-  for (int i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, c);
-  }
-}
-
-void clearAll(void) 
-{
-  uint32_t black = strip.Color(0, 0, 0);
-  for (int i=0; i<strip.numPixels(); i++) {
-    strip.setPixelColor(i, black);
-  }
-}
+*/
