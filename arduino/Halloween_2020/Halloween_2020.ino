@@ -1,39 +1,76 @@
 #include <Adafruit_NeoPixel.h>
+#include <DFRobotDFPlayerMini.h>
+
+/* Using Polulu 32U4 A-Star Micro
+ * Pins:
+ * GND - Power GND
+ * 5V - POWER 5V
+ * 0 = Serial1 Rx to DFPlayer Tx
+ * 1 = Serial1 Tx to DFPlayer Rx
+ * 2 = Light Trigger
+ * 3 = Driver for light string 1 
+ * 4 = Driver for light string 2
+ * 
+ * 6 = DFPlayer BUSY
+ */
+
+#define NSONGS 9
 
 const uint16_t msFrameDuration = 10;
+uint32_t frameNum = 0;
+
+// LED strip vals/vars
 const int addressesPerStrip = 100; // 3 LEDs per address
 const int numStrips = 2;
 const int pixelBufSize = numStrips * addressesPerStrip;
 const uint8_t rainbowWidth = 8;
-
+uint32_t pixels[pixelBufSize];
+int16_t rainbowPos;
+uint8_t randWheelStart;
+bool candyLightsInProgress = false;
 // https://github.com/adafruit/Adafruit_NeoPixel
-
-// Parameter 1 = number of pixels in strip
-// Parameter 2 = pin number (most are valid)
-// Parameter 3 = pixel type flags, add together as needed:
-//   NEO_RGB     Pixels are wired for RGB bitstream
-//   NEO_GRB     Pixels are wired for GRB bitstream
-//   NEO_KHZ400  400 KHz bitstream (e.g. FLORA pixels)
-//   NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip)
-
+//   Parameter 1 = number of pixels in strip
+//   Parameter 2 = pin number (most are valid)
+//   Parameter 3 = pixel type flags, add together as needed:
+//     NEO_RGB     Pixels are wired for RGB bitstream
+//     NEO_GRB     Pixels are wired for GRB bitstream
+//     NEO_KHZ400  400 KHz bitstream (e.g. FLORA pixels)
+//     NEO_KHZ800  800 KHz bitstream (e.g. High Density LED strip)
 Adafruit_NeoPixel strip0 = Adafruit_NeoPixel(addressesPerStrip, 3, NEO_GRB + NEO_KHZ800);
 Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(addressesPerStrip, 4, NEO_GRB + NEO_KHZ800);
 
-uint32_t pixels[pixelBufSize];
-uint32_t frameNum;
-int16_t rainbowPos;
-uint8_t randWheelStart;
-bool candyMode = false;
+// sound vars
+int input_led = 2;
+int input_busy = 6;
+int iSong = 1;
+unsigned long ms_start;
+volatile bool candySoundInProgress = false;  // TODO: Does this need to be volatile? // Covers sound-about-to-start, and sound-started states
+volatile bool playing = false;  // TODO: Does this need to be volatile?
+DFRobotDFPlayerMini mp3;
 
-// setup runs after each powerup or reset of the Arduino board
+
+// the setup function runs once when you press reset or power the board
 void setup() {
-  frameNum = 0;
-  rainbowPos = -rainbowWidth+1;
-  candyMode = false;
-  randomSeed(analogRead(0));
+  // initialize digital pin LED_BUILTIN as an output.
+  pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(input_led, INPUT_PULLUP);
+  pinMode(input_busy, INPUT);
   Serial.begin(9600);
-  Serial.println("Initializing...");
+  Serial1.begin(9600);
+  while (!Serial) {}
+  while (!Serial1) {}
   
+  Serial.println("Initializing...");
+
+  // init sound
+  mp3.begin(Serial1);
+  mp3.volume(24);
+
+  //pinMode(13, OUTPUT);
+  //digitalWrite(13, HIGH);
+
+  // init LED strips
+  randomSeed(analogRead(0));  
   strip0.begin();
   strip1.begin();
 }
@@ -44,54 +81,70 @@ void loop() {
   delay(msFrameDuration);
 
   updateBackgroundLayer();
+  
   updateSparkles();  
 
-  // if (!candyMode && !digitalRead(2)) {
-  if (!candyMode) {  // TODO: sensor not present yet
-     rainbowPos = -rainbowWidth+1;
-     candyMode = true;
-     randWheelStart = random(256);  
-  }
-  if (candyMode) {
-    updateCandyWavefront(rainbowPos, randWheelStart);
-    //debugPixels(); delay(1000);
+  // will set candySoundInProgress and candyLightInProgress if neither already set and sensor tripped
+  processCandySensor();
 
-    if (frameNum % 1 == 0) {
-      rainbowPos++;
-      if (rainbowPos == pixelBufSize) {
-        rainbowPos = -rainbowWidth+1;
-        candyMode = false;
-      }
+  if (candySoundInProgress) {
+    updateCandySound();  
+  }
+
+  if (candyLightsInProgress) {
+    updateCandyLights();  
+  }
+
+  updateLEDStrips();
+}
+
+
+void processCandySensor(void) {
+  bool state = digitalRead(input_led); // false if beam broken
+  digitalWrite(LED_BUILTIN, state);
+  if (!candySoundInProgress && !candyLightsInProgress && !state) {
+    candySoundInProgress = true;
+    candyLightsInProgress = true;
+    rainbowPos = -rainbowWidth+1;
+    randWheelStart = random(256);
+  }
+}
+
+void updateCandySound(void) {
+  bool not_busy = digitalRead(input_busy); // false if sound plaing
+
+  if (!playing) {
+    playing = true;
+    mp3.playFolder(1, iSong+1);
+    ms_start = millis();
+    Serial.print("Started song ");
+    Serial.println(iSong+1);
+  }
+  else {
+    if ((millis() - ms_start > 1000) && not_busy) { // if sound finished
+      playing = false;
+      candySoundInProgress = false;
+      iSong = (iSong + 1) % NSONGS;
+      Serial.println(iSong);
     }
   }
+}
 
-  // obviously, this could be generalized for an array of strips:
-  for (int i=0*addressesPerStrip; i<1*addressesPerStrip; i++) {
-    strip0.setPixelColor(i, pixels[i]);
-  }
-  for (int i=1*addressesPerStrip; i<2*addressesPerStrip; i++) {
-    strip1.setPixelColor(i, pixels[i]);
-  }
+void updateCandyLights(void) {
+  updateCandyWavefront(rainbowPos, randWheelStart);
 
-  strip0.show();
-  strip1.show();  
+  if (frameNum % 1 == 0) {
+    rainbowPos++;
+    if (rainbowPos == pixelBufSize) {
+      candyLightsInProgress = false;
+    }
+  }  
 }
 
 static uint32_t color(uint8_t r, uint8_t g, uint8_t b) {
   // for some reason, green and blue are exchanged:
   // return ((uint32_t)r << 16) | ((uint32_t)g <<  8) | b;  
   return ((uint32_t)r << 16) | ((uint32_t)b <<  8) | g;
-}
-
-void debugPixels() {
-  for (uint16_t i=0; i<numStrips; i++) {
-    Serial.println();
-    for (uint16_t j=0; j<addressesPerStrip; j++) {
-      Serial.print(pixels[i * addressesPerStrip + j]);
-      Serial.print(" ");
-    }
-  }
-  Serial.println();
 }
 
 void updateBackgroundLayer() {
@@ -135,9 +188,28 @@ uint32_t wheel(byte WheelPos) {
   }
 }
 
+void updateLEDStrips(void) {
+  // obviously, this could be generalized for an array of strips:
+  for (int i=0*addressesPerStrip; i<1*addressesPerStrip; i++) {
+    strip0.setPixelColor(i, pixels[i]);
+  }
+  for (int i=1*addressesPerStrip; i<2*addressesPerStrip; i++) {
+    strip1.setPixelColor(i, pixels[i]);
+  }
+
+  strip0.show();
+  strip1.show();
+}
+
 /*
-void testStuff(Adafruit_NeoPixel *aStrip) {
-  Serial.println("newtest");
-  Serial.println((*aStrip).numPixels());
+void debugPixels() {
+  for (uint16_t i=0; i<numStrips; i++) {
+    Serial.println();
+    for (uint16_t j=0; j<addressesPerStrip; j++) {
+      Serial.print(pixels[i * addressesPerStrip + j]);
+      Serial.print(" ");
+    }
+  }
+  Serial.println();
 }
 */
