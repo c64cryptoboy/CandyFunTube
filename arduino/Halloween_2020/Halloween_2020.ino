@@ -27,6 +27,8 @@ const uint8_t rainbowWidth = 8;
 uint32_t pixels[pixelBufSize];
 int16_t rainbowPos;
 uint8_t randWheelStart;
+uint8_t bkgdStart;
+uint8_t bkgd_ctr = 0;
 bool candyLightsInProgress = false;
 // https://github.com/adafruit/Adafruit_NeoPixel
 //   Parameter 1 = number of pixels in strip
@@ -148,16 +150,17 @@ static uint32_t color(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void updateBackgroundLayer() {
-  uint8_t r, g, b;
   uint32_t c;
+  for (uint16_t i=0; i<pixelBufSize/2; i++) {
+    c = color(0, 0, 8 + i>>2);
+    pixels[(i + bkgdStart) % pixelBufSize] = c;
+    pixels[(pixelBufSize - i + bkgdStart) % pixelBufSize] = c;
+  }
 
-  // for now, this is a fixed blue background
-  r = g = 0;
-  b = 16;
-  c = color(r, g, b);
-
-  for (uint16_t i=0; i<pixelBufSize; i++) {
-    pixels[i] = c;
+  bkgd_ctr++;
+  if (bkgd_ctr >= 4) {
+    bkgdStart = (bkgdStart + 1) % pixelBufSize;
+    bkgd_ctr = 0;
   }
 }
 
