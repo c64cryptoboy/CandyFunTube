@@ -57,8 +57,8 @@ void setup() {
   pinMode(input_busy, INPUT);
   Serial.begin(9600);
   Serial1.begin(9600);
-  while (!Serial) {}
-  while (!Serial1) {}
+  //while (!Serial) {}
+  //while (!Serial1) {}
   
   Serial.println("Initializing...");
 
@@ -66,8 +66,7 @@ void setup() {
   mp3.begin(Serial1);
   mp3.volume(24);
 
-  //pinMode(13, OUTPUT);
-  //digitalWrite(13, HIGH);
+  pinMode(LED_BUILTIN, OUTPUT);
 
   // init LED strips
   randomSeed(analogRead(0));  
@@ -102,6 +101,7 @@ void loop() {
 void processCandySensor(void) {
   bool state = digitalRead(input_led); // false if beam broken
   digitalWrite(LED_BUILTIN, state);
+  //Serial.print(state);
   if (!candySoundInProgress && !candyLightsInProgress && !state) {
     candySoundInProgress = true;
     candyLightsInProgress = true;
