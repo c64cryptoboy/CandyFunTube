@@ -16,7 +16,7 @@
 
 #define NSONGS 9
 
-const uint16_t msFrameDuration = 10;
+const uint16_t msFrameDuration = 0;
 uint32_t frameNum = 0;
 
 // LED strip vals/vars
@@ -190,11 +190,12 @@ uint32_t wheel(byte WheelPos) {
 
 void updateLEDStrips(void) {
   // obviously, this could be generalized for an array of strips:
-  for (int i=0*addressesPerStrip; i<1*addressesPerStrip; i++) {
-    strip0.setPixelColor(i, pixels[i]);
+  int i=0, j;
+  for (j=0; j < addressesPerStrip; i++, j++) {
+    strip0.setPixelColor(j, pixels[i]);
   }
-  for (int i=1*addressesPerStrip; i<2*addressesPerStrip; i++) {
-    strip1.setPixelColor(i, pixels[i]);
+  for (j=0; j < addressesPerStrip; i++, j++) {
+    strip1.setPixelColor(j, pixels[i]);
   }
 
   strip0.show();
