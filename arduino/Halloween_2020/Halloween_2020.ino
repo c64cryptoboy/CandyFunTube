@@ -44,10 +44,10 @@ Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(addressesPerStrip, 4, NEO_GRB + NEO
 // sound vars
 int input_led = 2;
 int input_busy = 6;
-int iSong = 1;
+uint8_t iSong = 0;
 unsigned long ms_start;
-volatile bool candySoundInProgress = false;  // TODO: Does this need to be volatile? // Covers sound-about-to-start, and sound-started states
-volatile bool playing = false;  // TODO: Does this need to be volatile?
+bool candySoundInProgress = false;  // Covers sound-about-to-start, and sound-started states
+bool playing = false;
 DFRobotDFPlayerMini mp3;
 
 
@@ -105,29 +105,28 @@ void processCandySensor(void) {
   digitalWrite(LED_BUILTIN, state);
   //Serial.print(state);
   if (!candySoundInProgress && !candyLightsInProgress && !state) {
-    candySoundInProgress = true;
+    iSong = (iSong + 1) % NSONGS;
+    //Serial.println(iSong);    
+    startCandySound();
     candyLightsInProgress = true;
     rainbowPos = -rainbowWidth+1;
     randWheelStart = random(256);
   }
 }
 
-void updateCandySound(void) {
-  bool not_busy = digitalRead(input_busy); // false if sound plaing
-
-  if (!playing) {
+void startCandySound(void) {
     playing = true;
     mp3.playFolder(1, iSong+1);
-    ms_start = millis();
-    Serial.print("Started song ");
-    Serial.println(iSong+1);
-  }
-  else {
-    if ((millis() - ms_start > 1000) && not_busy) { // if sound finished
+    ms_start = millis(); 
+    candySoundInProgress = true; 
+}
+
+void updateCandySound(void) {
+  bool not_busy = digitalRead(input_busy); // false if sound playing
+  if (playing) {
+   if ((millis() - ms_start > 1200) && not_busy) { // if sound finished
       playing = false;
       candySoundInProgress = false;
-      iSong = (iSong + 1) % NSONGS;
-      Serial.println(iSong);
     }
   }
 }
