@@ -1,2 +1,4 @@
-# Halloween2020Covid19CandyChute
-Delievering candy safely to socially distanced trick-or-treaters
+# Candy Fun Tube
+Delievering candy safely to socially-distanced trick-or-treaters
+
+Demonstration YouTube video: TODO
