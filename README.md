@@ -1,4 +1,7 @@
 # Candy Fun Tube
+
 Delievering candy safely to socially-distanced trick-or-treaters
 
-Demonstration YouTube video: TODO
+Created by David Knapp and David Youd
+
+[Demonstration video](https://www.youtube.com/watch?v=l4iEf2WvnAs)
