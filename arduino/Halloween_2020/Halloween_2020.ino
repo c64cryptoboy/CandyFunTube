@@ -44,6 +44,7 @@ Adafruit_NeoPixel strip1 = Adafruit_NeoPixel(addressesPerStrip, 4, NEO_GRB + NEO
 // sound vars
 int input_led = 2;
 int input_busy = 6;
+int sign_pin = 10;
 uint8_t iSong = 0;
 unsigned long ms_start;
 bool candySoundInProgress = false;  // Covers sound-about-to-start, and sound-started states
@@ -55,8 +56,10 @@ DFRobotDFPlayerMini mp3;
 void setup() {
   // initialize digital pin LED_BUILTIN as an output.
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(sign_pin, OUTPUT);
   pinMode(input_led, INPUT_PULLUP);
   pinMode(input_busy, INPUT);
+  digitalWrite(sign_pin, HIGH);
   Serial.begin(9600);
   Serial1.begin(9600);
   //while (!Serial) {}
@@ -97,6 +100,9 @@ void loop() {
   }
 
   updateLEDStrips();
+
+  updateSign();
+
 }
 
 
@@ -140,6 +146,10 @@ void updateCandyLights(void) {
       candyLightsInProgress = false;
     }
   }  
+}
+
+void updateSign(void) {
+  digitalWrite(sign_pin, !(candySoundInProgress || candyLightsInProgress));
 }
 
 static uint32_t color(uint8_t r, uint8_t g, uint8_t b) {
